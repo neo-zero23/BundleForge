@@ -7,7 +7,7 @@
 ---
 # Forge your own creation.
 
-**Wizard packaging source into executables and portables.**
+**Start, prepare, and pack in one place.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
