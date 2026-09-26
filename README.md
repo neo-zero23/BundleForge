@@ -5,7 +5,7 @@
 <div align="center">
 
 ---
-# BundleForge
+# Forge your own creation.
 
 **Wizard packaging source into executables and portables.**
 
