@@ -2,7 +2,7 @@
 
 <img width="1500" height="500" alt="bannernew" src="https://github.com/user-attachments/assets/9f78efa4-e9bb-47e9-94ff-d87c1e18be28" />
 
-</div align="center">
+<div align="center">
 
 ---
 # BundleForge
