@@ -1,0 +1,7 @@
+[package]
+name = "bundleforge-core"
+version = "0.1.0"
+edition = "2021"
+
+# Cero dependencias a propósito: el core debe compilar offline y rápido.
+[dependencies]

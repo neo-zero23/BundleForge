@@ -1,0 +1,21 @@
+# Rust build output (core + ui-linux)
+/target/
+core/target/
+ui-linux/target/
+
+# Cargo (keep Cargo.lock for reproducible binary builds)
+# (intentionally NOT ignored)
+
+# BundleForge batch reports (if ever generated inside the repo)
+bundleforge-report-*.txt
+
+# KDE / editor / OS metadata
+.directory
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Logs
+*.log

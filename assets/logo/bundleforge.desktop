@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=BundleForge
+Comment=Multi-format package builder wizard
+Exec=bundleforge
+Icon=bundleforge
+Terminal=false
+Type=Application
+Categories=Development;
+StartupWMClass=bundleforge
