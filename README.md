@@ -13,7 +13,7 @@
 
 
 ---
-</div>
+<div align="left">
 
 ## What is BundleForge?
 
