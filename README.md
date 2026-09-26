@@ -9,7 +9,7 @@
 
 **Start, prepare, and pack in one place.**
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)   [![Last Commit](https://img.shields.io/github/last-commit/neo-zero23/BundleForge?style=flat-square)](https://github.com/neo-zero23/BundleForge/commits/main)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)   [![Last Commit](https://img.shields.io/github/last-commit/neo-zero23/BundleForge?style=flat)](https://github.com/neo-zero23/BundleForge/commits/main)
 
 
 ---
