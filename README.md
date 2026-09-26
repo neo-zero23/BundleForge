@@ -2,9 +2,6 @@
 
 <img width="1500" height="500" alt="bannernew" src="https://github.com/user-attachments/assets/9f78efa4-e9bb-47e9-94ff-d87c1e18be28" />
 
-
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-
 </div>
 
 ---
@@ -12,6 +9,7 @@
 
 **Wizard packaging source into executables and portables.**
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## What is BundleForge?
 
