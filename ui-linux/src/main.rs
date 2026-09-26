@@ -11,11 +11,12 @@ use iced::{
     keyboard::{self, key::Named, Key},
     time,
     widget::{
-        button, checkbox, column, container, horizontal_space, image,
-        progress_bar, row, scrollable, text, text_input,
+        button, checkbox, column, container, image,
+        progress_bar, row, scrollable, stack, text, text_input,
         tooltip::{self, Tooltip},
+        Space,
     },
-    Application, Command, Element, Length, Settings, Subscription, Theme,
+    Element, Length, Subscription, Task, Theme,
 };
 use std::sync::{
     atomic::Ordering,
@@ -69,34 +70,50 @@ fn short_state(state: &CardState) -> String {
 // NOTE: single source of truth for real builders is core::has_builder;
 // always query it instead of hardcoding formats here.
 
-// Title logo (user-provided PNG, not a font file). Swap TITLE to
-// TITLE_ALT to try the alternative.
+// Yin-style backdrop (baked PNG: base #1a232c + 3 soft radial glows).
+// iced has no radial/multi-layer gradients, so it's pre-rendered.
+const BACKDROP: &[u8] = include_bytes!("../../assets/backdrop.png");
+// Bundled UI fonts (Space Grotesk, OFL): both faces loaded so every
+// weight resolves inside the family; default asks for Bold explicitly
+// (`with_name` alone means Normal weight and missed). Inter-Regular and
+// SemiBold ship alongside as alternatives.
+const FONT_REGULAR: &[u8] = include_bytes!("../../assets/fonts/SpaceGrotesk-Regular.ttf");
+const FONT_BOLD: &[u8] = include_bytes!("../../assets/fonts/SpaceGrotesk-Bold.ttf");
+// Title logos (user-provided PNGs, not font files).
 #[allow(dead_code)]
 const TITLE: &[u8] = include_bytes!("../../assets/fonts/bundleforge.png");
-const TITLE_ALT: &[u8] = include_bytes!("../../assets/fonts/bundleforgealternative.png");
+const TITLE_ALT: &[u8] = include_bytes!("../../assets/fonts/bannerforapp.png");
 // Anvil sprite frames (32x32), compiled into the binary.
 const FRAME1: &[u8] = include_bytes!("../../assets/loading/frame1.png");
 const FRAME2: &[u8] = include_bytes!("../../assets/loading/frame2.png");
 
 fn window_icon() -> Option<iced::window::Icon> {
-    iced::window::icon::from_file_data(include_bytes!("../../assets/logo/BundleForge.png"), None)
-        .ok()
+    // iced 0.14 dropped icon::from_file_data (raw RGBA only) — no icon.
+    None
 }
 
 fn main() -> iced::Result {
-    Ui::run(Settings {
-        // App ID: en Wayland el icono sale del .desktop que coincida con esto.
-        id: Some(String::from("bundleforge")),
-        window: iced::window::Settings {
+    iced::application(Ui::boot, Ui::update, Ui::view)
+        .title("BundleForge")
+        .subscription(Ui::subscription)
+        .theme(|ui: &Ui| ui.theme())
+        .settings(iced::Settings {
+            id: Some("bundleforge".to_string()),
+            fonts: vec![FONT_REGULAR.into(), FONT_BOLD.into()],
+            default_font: iced::Font {
+                family: iced::font::Family::Name("Space Grotesk"),
+                weight: iced::font::Weight::Bold,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .window(iced::window::Settings {
             size: iced::Size::new(690.0, 707.0),
-            // Fixed layout by design (all views target ~680px): maximizing
-            // only adds empty space. Revert to resizable if views go fluid.
             resizable: false,
             icon: window_icon(),
             ..Default::default()
-        },
-        ..Settings::default()
-    })
+        })
+        .run()
 }
 
 #[derive(Debug, Clone)]
@@ -111,63 +128,29 @@ enum Step {
 }
 
 /// House button: default (primary) look with rounder corners.
-/// One constructor for all 28 buttons instead of per-call styling.
-struct Pill;
-impl iced::widget::button::StyleSheet for Pill {
-    type Style = Theme;
-    fn active(&self, style: &Self::Style) -> iced::widget::button::Appearance {
-        // Swapped by design: resting shows the hover tone, hovering drops
-        // to the resting tone.
-        let base = style.hovered(&iced::theme::Button::Primary);
-        iced::widget::button::Appearance {
-            border: iced::Border {
-                radius: 9.0.into(),
-                ..base.border
-            },
-            ..base
-        }
-    }
-    fn hovered(&self, style: &Self::Style) -> iced::widget::button::Appearance {
-        let base = style.active(&iced::theme::Button::Primary);
-        iced::widget::button::Appearance {
-            border: iced::Border {
-                radius: 9.0.into(),
-                ..base.border
-            },
-            ..base
-        }
-    }
-    fn pressed(&self, style: &Self::Style) -> iced::widget::button::Appearance {
-        let base = style.pressed(&iced::theme::Button::Primary);
-        iced::widget::button::Appearance {
-            border: iced::Border {
-                radius: 9.0.into(),
-                ..base.border
-            },
-            ..base
-        }
-    }
-    fn disabled(&self, style: &Self::Style) -> iced::widget::button::Appearance {
-        let base = style.disabled(&iced::theme::Button::Primary);
-        iced::widget::button::Appearance {
-            border: iced::Border {
-                radius: 9.0.into(),
-                ..base.border
-            },
-            ..base
-        }
-    }
-}
-
+/// One constructor for all buttons instead of per-call styling.
+/// Resting shows the hover tone, hovering drops to the resting tone.
 fn pill<'a>(
     content: impl Into<iced::Element<'a, Message>>,
 ) -> iced::widget::Button<'a, Message> {
-    button(content).style(iced::theme::Button::Custom(Box::new(Pill)))
+    button(content).style(|theme: &Theme, status: button::Status| {
+        let base = match status {
+            button::Status::Active => button::primary(theme, button::Status::Hovered),
+            button::Status::Hovered => button::primary(theme, button::Status::Active),
+            s => button::primary(theme, s),
+        };
+        button::Style {
+            border: iced::Border {
+                radius: 9.0.into(),
+                ..base.border
+            },
+            ..base
+        }
+    })
 }
 
 /// Hover tip for a button, only when the user kept them enabled
-/// (`show_button_tips` in config). No delay API in iced 0.12, so tips
-/// appear on hover immediately. Solid background (default is transparent).
+/// (`show_button_tips` in config). Solid background (default is transparent).
 fn tip<'a>(
     btn: iced::widget::Button<'a, Message>,
     s: &'static str,
@@ -175,27 +158,18 @@ fn tip<'a>(
 ) -> Element<'a, Message> {
     if on {
         Tooltip::new(btn, text(s).size(12), tooltip::Position::Top)
-            .style(iced::theme::Container::Custom(Box::new(TipBg)))
+            .style(|_theme: &Theme| container::Style {
+                background: Some(iced::Color::from_rgb8(0x26, 0x26, 0x2A).into()),
+                border: iced::Border {
+                    color: iced::Color::from_rgb8(0x55, 0x55, 0x5A).into(),
+                    width: 1.0,
+                    radius: 8.0.into(),
+                },
+                ..Default::default()
+            })
             .into()
     } else {
         btn.into()
-    }
-}
-
-/// Solid background for tooltips (house dark, rounded).
-struct TipBg;
-impl container::StyleSheet for TipBg {
-    type Style = Theme;
-    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
-        container::Appearance {
-            background: Some(iced::Color::from_rgb8(0x26, 0x26, 0x2A).into()),
-            border: iced::Border {
-                color: iced::Color::from_rgb8(0x55, 0x55, 0x5A).into(),
-                width: 1.0,
-                radius: 8.0.into(),
-            },
-            ..Default::default()
-        }
     }
 }
 
@@ -500,24 +474,15 @@ fn browse_folder() -> Option<String> {
     None
 }
 
-impl Application for Ui {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
-
-    fn new(_flags: ()) -> (Self, Command<Message>) {
-        (Self::default(), Command::none())
-    }
-
-    fn title(&self) -> String {
-        String::from("BundleForge")
+impl Ui {
+    fn boot() -> (Self, Task<Message>) {
+        (Self::default(), Task::none())
     }
 
     fn subscription(&self) -> Subscription<Message> {
         // ESC closes the config modal (global, cheap: only ESC produces
         // a message, everything else is filtered out here).
-        let keys = event::listen_with(|e, _status| match e {
+        let keys = event::listen_with(|e, _status, _window| match e {
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key: Key::Named(Named::Escape),
                 ..
@@ -537,7 +502,7 @@ impl Application for Ui {
         }
     }
 
-    fn update(&mut self, msg: Message) -> Command<Message> {
+    fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::PathChanged(s) => {
                 self.path_input = s;
@@ -560,12 +525,12 @@ impl Application for Ui {
                 let p = self.path_input.trim();
                 if p.is_empty() {
                     self.note = String::from("paste the project folder");
-                    return Command::none();
+                    return Task::none();
                 }
                 let formats = selected_formats_all();
                 if formats.is_empty() {
                     self.note = String::from("no formats known");
-                    return Command::none();
+                    return Task::none();
                 }
                 self.note.clear();
                 self.start_loading(formats, mode);
@@ -1133,41 +1098,41 @@ impl Application for Ui {
             Message::DetailTest(fmt) => {
                 if self.path_input.trim().is_empty() {
                     self.detail_status = String::from("choose a project folder first");
-                    return Command::none();
+                    return Task::none();
                 }
                 self.start_loading(vec![fmt], "build");
             }
             Message::DetailPackage(fmt) => {
                 if self.path_input.trim().is_empty() {
                     self.detail_status = String::from("choose a project folder first");
-                    return Command::none();
+                    return Task::none();
                 }
                 if self.out_dir.trim().is_empty() {
                     self.detail_status = String::from("choose an output folder first");
-                    return Command::none();
+                    return Task::none();
                 }
                 self.start_loading(vec![fmt], "package");
             }
             Message::DetailIsolated(fmt) => {
                 if self.path_input.trim().is_empty() {
                     self.detail_status = String::from("choose a project folder first");
-                    return Command::none();
+                    return Task::none();
                 }
                 if self.out_dir.trim().is_empty() {
                     self.detail_status = String::from("choose an output folder first");
-                    return Command::none();
+                    return Task::none();
                 }
                 if bundleforge_core::container::container_runtime().is_none() {
                     self.detail_status = String::from(
                         "isolated needs podman/docker first (use Install podman on this page when offered)",
                     );
-                    return Command::none();
+                    return Task::none();
                 }
                 if bundleforge_core::container::container_spec(&fmt).is_none() {
                     self.detail_status = format!(
                         "isolated unavailable for {fmt} (no image: nested sandbox or SDK rebuild)"
                     );
-                    return Command::none();
+                    return Task::none();
                 }
                 // Two-step confirm when the image is NOT cached: the first
                 // Isolated run downloads it (hundreds of MB). Show the real
@@ -1198,7 +1163,7 @@ impl Application for Ui {
                     self.detail_status = format!(
                         "image {image} not cached: first run downloads it (hundreds of MB, {free_s} here). Press Isolated again to confirm."
                     );
-                    return Command::none();
+                    return Task::none();
                 }
                 self.pending_isolated = None;
                 bundleforge_core::container::set_force_container(true);
@@ -1216,8 +1181,8 @@ impl Application for Ui {
                     log: vec![format!("$ install tool")],
                     frame: 0,
                     frames: [
-                        image::Handle::from_memory(FRAME1.to_vec()),
-                        image::Handle::from_memory(FRAME2.to_vec()),
+                        image::Handle::from_bytes(FRAME1.to_vec()),
+                        image::Handle::from_bytes(FRAME2.to_vec()),
                     ],
                     show_detail: false,
                     path: p.to_string(),
@@ -1239,8 +1204,8 @@ impl Application for Ui {
                     log: vec!["$ install podman (container runtime)".to_string()],
                     frame: 0,
                     frames: [
-                        image::Handle::from_memory(FRAME1.to_vec()),
-                        image::Handle::from_memory(FRAME2.to_vec()),
+                        image::Handle::from_bytes(FRAME1.to_vec()),
+                        image::Handle::from_bytes(FRAME2.to_vec()),
                     ],
                     show_detail: false,
                     path: p.to_string(),
@@ -1257,7 +1222,7 @@ impl Application for Ui {
             Message::RemotePackage { format, remote } => {
                 if self.out_dir.trim().is_empty() {
                     self.note = String::from("choose an output folder first");
-                    return Command::none();
+                    return Task::none();
                 }
                 let p = self.path_input.trim();
                 self.view = View::Loading(Loading {
@@ -1269,8 +1234,8 @@ impl Application for Ui {
                     log: vec![format!("$ remote package {format} on {remote}")],
                     frame: 0,
                     frames: [
-                        image::Handle::from_memory(FRAME1.to_vec()),
-                        image::Handle::from_memory(FRAME2.to_vec()),
+                        image::Handle::from_bytes(FRAME1.to_vec()),
+                        image::Handle::from_bytes(FRAME2.to_vec()),
                     ],
                     show_detail: false,
                     path: p.to_string(),
@@ -1402,28 +1367,39 @@ impl Application for Ui {
                 }
             }
         }
-        Command::none()
+        Task::none()
     }
 
     fn view(&self) -> Element<Message> {
-        match &self.view {
+        let base = match &self.view {
             View::Store => self.view_store(),
             View::Detail { format } => self.view_detail(format),
             View::Config => self.view_config(),
             View::Loading(st) => self.view_loading(st),
             View::Results { info, results, log } => self.view_results(info, results, log),
             View::Remotes { .. } => self.view_remotes(),
-        }
+        };
+        // Yin-style glow: baked backdrop under the content (Stack needs
+        // iced 0.13+ — one reason for the migration).
+        stack![
+            image(image::Handle::from_bytes(BACKDROP.to_vec()))
+                .width(Length::Fill)
+                .height(Length::Fill),
+            base,
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 
     fn theme(&self) -> Theme {
-        // House palette on Dark: background #151517, buttons #272727.
+        // House palette on Dark: background #1a232c, buttons steel blue.
         // Every default (primary) button follows it, no per-button edits.
         Theme::custom(
             "BundleForge".to_string(),
             iced::theme::Palette {
-                background: iced::Color::from_rgb8(0x15, 0x15, 0x17),
-                primary: iced::Color::from_rgb8(0x27, 0x27, 0x27),
+                background: iced::Color::from_rgb8(0x1A, 0x23, 0x2C),
+                primary: iced::Color::from_rgb8(0x2B, 0x3F, 0x52),
                 ..Theme::Dark.palette()
             },
         )
@@ -1462,8 +1438,8 @@ impl Ui {
             log: vec![format!("$ scan {p}")],
             frame: 0,
             frames: [
-                image::Handle::from_memory(FRAME1.to_vec()),
-                image::Handle::from_memory(FRAME2.to_vec()),
+                image::Handle::from_bytes(FRAME1.to_vec()),
+                image::Handle::from_bytes(FRAME2.to_vec()),
             ],
             show_detail: false,
             path: p,
@@ -1484,10 +1460,10 @@ impl Ui {
         let col = column![
             row![
                 text("Settings").size(20),
-                horizontal_space(),
+                Space::new().width(Length::Fill),
                 pill(text("X")).on_press(Message::CloseConfig),
             ]
-            .align_items(iced::Alignment::Center),
+            .align_y(iced::Alignment::Center),
             text("Project folder:").size(14),
             row![
                 text_input("", &self.path_input).padding(8),
@@ -1500,18 +1476,15 @@ impl Ui {
                 pill("Browse").on_press(Message::ConfigBrowseOut),
             ]
             .spacing(10),
-            checkbox("Show button tips", self.config.show_button_tips)
+            checkbox(self.config.show_button_tips)
+                .label("Show button tips")
                 .on_toggle(Message::TipsToggled),
-            checkbox(
-                "Remember project folder",
-                self.config.persist_project_folder,
-            )
-            .on_toggle(Message::PersistProjectToggled),
-            checkbox(
-                "Remember output folder",
-                self.config.persist_output_folder,
-            )
-            .on_toggle(Message::PersistOutputToggled),
+            checkbox(self.config.persist_project_folder)
+                .label("Remember project folder")
+                .on_toggle(Message::PersistProjectToggled),
+            checkbox(self.config.persist_output_folder)
+                .label("Remember output folder")
+                .on_toggle(Message::PersistOutputToggled),
             text("Unchecked = session only (starts empty next launch).").size(11),
         ]
         .spacing(12)
@@ -1528,20 +1501,33 @@ impl Ui {
         let tips = self.config.show_button_tips;
         let mut col = column![
             row![
-                image(image::Handle::from_memory(TITLE_ALT.to_vec()))
+                image(image::Handle::from_bytes(TITLE_ALT.to_vec()))
                     .width(Length::Fixed(300.0))
-                    .height(Length::Fixed(68.0)),
-                horizontal_space(),
-                pill(
-                    image(image::Handle::from_memory(
+                    .height(Length::Fixed(64.0)),
+                Space::new().width(Length::Fill),
+                button(
+                    image(image::Handle::from_bytes(
                         include_bytes!("../../assets/formats/config.png").to_vec(),
                     ))
-                    .width(Length::Fixed(30.0))
-                    .height(Length::Fixed(30.0)),
+                    .width(Length::Fixed(18.0))
+                    .height(Length::Fixed(18.0)),
                 )
+                .padding(6)
+                .style(|theme: &Theme, status: button::Status| {
+                    // Icon-only gear: no box at rest, subtle wash on hover.
+                    let mut base = button::primary(theme, status);
+                    base.background = None;
+                    base.border.radius = 6.0.into();
+                    if matches!(status, button::Status::Hovered) {
+                        base.background = Some(
+                            iced::Color::from_rgba(1.0, 1.0, 1.0, 0.08).into(),
+                        );
+                    }
+                    base
+                })
                 .on_press(Message::OpenConfig),
             ]
-            .align_items(iced::Alignment::Center),
+            .align_y(iced::Alignment::Center),
             text("Package only your own or trusted code: builds run project scripts (RCE by design).").size(11),
             text("Project folder:").size(14),
             row![
@@ -1584,7 +1570,7 @@ impl Ui {
             for (name, _os) in chunk {
                 let (state, _line) = capability(name, &remotes);
                 let icon =
-                    image(image::Handle::from_memory(fmt_icon(name).to_vec()))
+                    image(image::Handle::from_bytes(fmt_icon(name).to_vec()))
                         .width(Length::Fixed(48.0))
                         .height(Length::Fixed(48.0));
                 let mut card = column![
@@ -1593,7 +1579,7 @@ impl Ui {
                     text(short_state(&state)).size(10),
                 ]
                 .spacing(1)
-                .align_items(iced::Alignment::Center)
+                .align_x(iced::Alignment::Center)
                 .width(Length::Fixed(110.0));
                 if let Some(err) = self.last_err.get(*name) {
                     card = card.push(text(err).size(10));
@@ -1605,7 +1591,9 @@ impl Ui {
                         let b = pill(text(label))
                             .on_press(Message::DoInstall(name.to_string()));
                         card = card.push(if retry {
-                            b.style(iced::theme::Button::Destructive)
+                            b.style(|theme: &Theme, status: button::Status| {
+                                button::danger(theme, status)
+                            })
                         } else {
                             b
                         });
@@ -1625,13 +1613,12 @@ impl Ui {
                 }
                 r = r.push(card);
             }
-            col = col.push(container(r).width(Length::Fill).center_x());
+            col = col.push(container(r).center_x(Length::Fill));
         }
         container(scrollable(
             container(col)
                 .max_width(680.0)
-                .width(Length::Fill)
-                .center_x(),
+                .center_x(Length::Fill),
         ))
         .width(Length::Fill)
         .height(Length::Fill)
@@ -1671,8 +1658,8 @@ impl Ui {
             col = col.push(
                 text("Exact command (runs only if you press Download):").size(12),
             );
-            col = col.push(text(&recipe.command).size(11));
-            if let Some(note) = &recipe.note {
+            col = col.push(text(recipe.command.clone()).size(11));
+            if let Some(note) = recipe.note.clone() {
                 col = col.push(text(note).size(11));
             }
             if recipe.needs_password {
@@ -1777,7 +1764,7 @@ impl Ui {
             .into()
     }
 
-    fn view_loading(&self, st: &Loading) -> Element<Message> {
+    fn view_loading<'a>(&'a self, st: &'a Loading) -> Element<'a, Message> {
         if st.pwd_open {
             return container(
                 column![
@@ -1796,12 +1783,12 @@ impl Ui {
                 ]
                 .spacing(10)
                 .padding(24)
-                .align_items(iced::Alignment::Center),
+                .align_x(iced::Alignment::Center),
             )
             .width(Length::Fill)
             .height(Length::Fill)
-            .center_x()
-            .center_y()
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into();
         }
         let total = st.steps.len().max(1);
@@ -1827,7 +1814,7 @@ impl Ui {
                 .width(Length::Fixed(128.0))
                 .height(Length::Fixed(128.0)),
             text(current).size(15),
-            progress_bar(0.0..=1.0, pct).height(Length::Fixed(10.0)),
+            progress_bar(0.0..=1.0, pct),
             text(format!("{}/{}", st.done.min(total), total)).size(12),
             row![
                 pill(if st.show_detail {
@@ -1842,7 +1829,7 @@ impl Ui {
         ]
         .spacing(10)
         .padding(24)
-        .align_items(iced::Alignment::Center);
+        .align_x(iced::Alignment::Center);
 
         if st.show_detail {
             let mut log = column![].spacing(2);
@@ -1855,17 +1842,17 @@ impl Ui {
         container(col)
             .width(Length::Fill)
             .height(Length::Fill)
-            .center_x()
-            .center_y()
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into()
     }
 
-    fn view_results(
-        &self,
-        info: &ProjectInfo,
-        results: &[TestResult],
-        log: &[String],
-    ) -> Element<Message> {
+    fn view_results<'a>(
+        &'a self,
+        info: &'a ProjectInfo,
+        results: &'a [TestResult],
+        log: &'a [String],
+    ) -> Element<'a, Message> {
         let failed = results.iter().any(|r| r.success == Some(false));
         let title = if failed {
             "Packaging failed"

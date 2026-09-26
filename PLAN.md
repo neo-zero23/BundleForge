@@ -245,6 +245,17 @@ struct PackageResult { format: String, path: String, size: u64, success: bool }
   batch). 44 core tests + UI compile. M21d: checks refocused to folder
   persistence (Remember project/output folder; unchecked = session-only,
   saved value cleared). Format checks removed (not wanted).
+- [x] M22: iced 0.12 → 0.14 migration (proven on a throwaway branch first,
+  then applied clean, no merge) — Catalog styles (pill/danger/tips as
+  closures), Task replaces Command, boot/update/view builder, Space
+  spacer, checkbox labels, align_x/align_y split, borrowed text
+  (lifetimes unified). Dropped: window icon (API removed upstream),
+  fixed progress height, App ID setting. 44 core tests + UI compile.
+  Stack available now → Yin-style glow retake possible.
+- [x] M23: house theme — Yin-style baked glow backdrop (Stack), steel
+  blue buttons (#2b3f52), Space Grotesk (Regular+Bold loaded, Bold
+  default; `with_name` weight gotcha fixed). 44 core tests + UI compile.
+  LIVE-VERIFIED visually on CachyOS.
 - [x] M14: msix — REMOVED 2026-09-24 (Windows rejects signed installs
   at GetManifestReader despite everything locally verifiable being
   correct; better nothing than frustration).
