@@ -251,7 +251,7 @@ pub fn recommendation(format: &str, host_os: &str) -> &'static str {
             "Native: linuxdeploy download (Option 1). Container: unavailable (needs FUSE). Remote: any Linux builder."
         }
         "msi" => {
-            "Native: wixl via msitools (Option 1; WiX subset) on Linux, WiX on Windows. Container: automatic (debian + msitools). Remote: Linux builder, or Windows for native WiX."
+            "Native: wixl via msitools (Option 1; WiX subset) on Linux, WiX on Windows. Container: automatic (fedora + msitools, debian's lacks wixl). Remote: Linux builder, or Windows for native WiX."
         }
         "xbps" => {
             "Native: xbps-create (Option 1 builds it from source). Container: automatic (void image). Remote: Linux builder with xbps tools or podman."

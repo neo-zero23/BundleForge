@@ -256,6 +256,15 @@ struct PackageResult { format: String, path: String, size: u64, success: bool }
   blue buttons (#2b3f52), Space Grotesk (Regular+Bold loaded, Bold
   default; `with_name` weight gotcha fixed). 44 core tests + UI compile.
   LIVE-VERIFIED visually on CachyOS.
+- [x] M24: manual name/version — editable Name/Version inputs in Store
+  and Detail (shared, session-only, placeholder `auto` = detection);
+  Browse prefills from scan, manual text wins at Scan/Remote time.
+  45 core tests + UI compile. User verifies live.
+- [x] M25: msi container moved debian → Fedora (debian msitools has no
+  wixl, verified via dpkg -L; Fedora's has /usr/bin/wixl, verified) +
+  apt/wixl recipe removed (same broken package) + rpm BuildArch honors
+  ELF payloads (noarch for scripts, native arch for binaries — Fedora
+  rejects the lie). 45 core tests + UI compile.
 - [x] M14: msix — REMOVED 2026-09-24 (Windows rejects signed installs
   at GetManifestReader despite everything locally verifiable being
   correct; better nothing than frustration).

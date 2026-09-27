@@ -78,8 +78,10 @@ pub fn container_spec(format: &str) -> Option<ContainerSpec> {
             setup: &[&["xbps-install", "-Sy", "xbps"]],
         }),
         "msi" => Some(ContainerSpec {
-            image: "debian:stable-slim",
-            setup: &[&["apt-get", "update"], &["apt-get", "install", "-y", "msitools"]],
+            // Fedora, NOT debian: debian's msitools ships 5 tools but NO
+            // wixl (verified); Fedora's does (/usr/bin/wixl, verified).
+            image: "fedora:latest",
+            setup: &[&["dnf", "install", "-y", "msitools"]],
         }),
         "zip" => Some(ContainerSpec {
             image: "debian:stable-slim",
@@ -400,6 +402,8 @@ mod tests {
         assert!(container_spec("flatpak").is_none());
         assert!(container_spec("snap").is_some());
         assert!(container_spec("zip").is_some());
+        // msi must stay on Fedora: debian's msitools has no wixl (verified).
+        assert_eq!(container_spec("msi").unwrap().image, "fedora:latest");
         assert!(container_spec("blah").is_none());
         assert_eq!(container_spec("deb").unwrap().setup.len(), 0);
         assert!(!container_spec("rpm").unwrap().setup.is_empty());

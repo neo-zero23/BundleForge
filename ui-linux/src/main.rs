@@ -183,6 +183,8 @@ struct Loading {
     path: String,
     out_dir: String,
     info: Option<ProjectInfo>,
+    name_ovr: String,
+    version_ovr: String,
     results: Vec<TestResult>,
     rx: Option<Receiver<(TestResult, bool)>>,
     ctl: Arc<BuildCtl>,
@@ -233,6 +235,13 @@ struct Ui {
     path_input: String,
     out_dir: String,
     info: Option<ProjectInfo>,
+    /// Manual name/version (session-only): empty = use scan detection.
+    proj_name: String,
+    proj_version: String,
+    /// True once the user types (Browse prefills only non-dirty fields,
+    /// so browsing after typing never clobbers manual edits).
+    name_dirty: bool,
+    version_dirty: bool,
     view: View,
     note: String,
     install_pwd: String,
@@ -270,6 +279,10 @@ impl Default for Ui {
                 String::new()
             },
             info: None,
+            proj_name: String::new(),
+            proj_version: String::new(),
+            name_dirty: false,
+            version_dirty: false,
             view: View::Store,
             note: String::new(),
             install_pwd: String::new(),
@@ -295,6 +308,8 @@ impl Default for Ui {
 enum Message {
     PathChanged(String),
     OutDirChanged(String),
+    NameChanged(String),
+    VersionChanged(String),
     RefreshStore,
     OpenDetail(String),
     BrowseProject,
@@ -512,6 +527,14 @@ impl Ui {
                 self.out_dir = s;
                 self.sync_config();
             }
+            Message::NameChanged(s) => {
+                self.proj_name = s;
+                self.name_dirty = true;
+            }
+            Message::VersionChanged(s) => {
+                self.proj_version = s;
+                self.version_dirty = true;
+            }
             Message::RefreshStore => {
                 // No-op by design: every processed message re-renders, and
                 // card states probe live — so this IS the re-check.
@@ -557,8 +580,15 @@ impl Ui {
                     } else if st.done < st.steps.len() {
                         match st.steps[st.done].clone() {
                             Step::Scan => {
-                                let (stack, name, version) =
+                                let (stack, mut name, mut version) =
                                     detectors::detect_stack(std::path::Path::new(&st.path));
+                                // Manual metadata wins over detection.
+                                if !st.name_ovr.is_empty() {
+                                    name = st.name_ovr.clone();
+                                }
+                                if !st.version_ovr.is_empty() {
+                                    version = st.version_ovr.clone();
+                                }
                                 st.log.push(format!("stack={stack} name={name} v{version}"));
                                 st.info = Some(ProjectInfo {
                                     path: st.path.clone(),
@@ -675,12 +705,20 @@ impl Ui {
                                     let ctl = st.ctl.clone();
                                     let path = st.path.clone();
                                     let out_dir = st.out_dir.clone();
-                                    let info = st.info.clone().unwrap_or(ProjectInfo {
+                                    let mut info = st.info.clone().unwrap_or(ProjectInfo {
                                         path: st.path.clone(),
                                         stack: "unknown".into(),
                                         name: "project".into(),
                                         version: "0.0.0".into(),
                                     });
+                                    // Remote path has no Scan step: apply
+                                    // manual metadata here.
+                                    if !st.name_ovr.is_empty() {
+                                        info.name = st.name_ovr.clone();
+                                    }
+                                    if !st.version_ovr.is_empty() {
+                                        info.version = st.version_ovr.clone();
+                                    }
                                     std::thread::spawn(move || {
                                         let rem = remote::load_remotes()
                                             .into_iter()
@@ -1032,10 +1070,23 @@ impl Ui {
             Message::BrowseProject => {
                 match browse_folder() {
                     Some(p) => {
+                        // Different folder = fresh metadata state.
+                        if p != self.path_input {
+                            self.name_dirty = false;
+                            self.version_dirty = false;
+                        }
                         self.path_input = p.clone();
                         self.sync_config();
                         let (stack, name, version) =
                             detectors::detect_stack(std::path::Path::new(&p));
+                        // New folder = fresh metadata, but never clobber
+                        // fields the user already typed.
+                        if !self.name_dirty {
+                            self.proj_name = name.clone();
+                        }
+                        if !self.version_dirty {
+                            self.proj_version = version.clone();
+                        }
                         self.detail_status = format!("{name} · {stack} {version}");
                     }
                     None => {
@@ -1063,8 +1114,20 @@ impl Ui {
             }
             Message::ConfigBrowseProject => {
                 if let Some(p) = browse_folder() {
-                    self.path_input = p;
+                    if p != self.path_input {
+                        self.name_dirty = false;
+                        self.version_dirty = false;
+                    }
+                    self.path_input = p.clone();
                     self.sync_config();
+                    let (_, name, version) =
+                        detectors::detect_stack(std::path::Path::new(&p));
+                    if !self.name_dirty {
+                        self.proj_name = name;
+                    }
+                    if !self.version_dirty {
+                        self.proj_version = version;
+                    }
                 }
             }
             Message::ConfigBrowseOut => {
@@ -1188,6 +1251,8 @@ impl Ui {
                     path: p.to_string(),
                     out_dir: self.out_dir.clone(),
                     info: self.info.clone(),
+                    name_ovr: self.proj_name.trim().to_string(),
+                    version_ovr: self.proj_version.trim().to_string(),
                     results: Vec::new(),
                     rx: None,
                     ctl: BuildCtl::fresh(),
@@ -1211,6 +1276,8 @@ impl Ui {
                     path: p.to_string(),
                     out_dir: self.out_dir.clone(),
                     info: self.info.clone(),
+                    name_ovr: self.proj_name.trim().to_string(),
+                    version_ovr: self.proj_version.trim().to_string(),
                     results: Vec::new(),
                     rx: None,
                     ctl: BuildCtl::fresh(),
@@ -1241,6 +1308,8 @@ impl Ui {
                     path: p.to_string(),
                     out_dir: self.out_dir.clone(),
                     info: self.info.clone(),
+                    name_ovr: self.proj_name.trim().to_string(),
+                    version_ovr: self.proj_version.trim().to_string(),
                     results: Vec::new(),
                     rx: None,
                     ctl: BuildCtl::fresh(),
@@ -1445,6 +1514,8 @@ impl Ui {
             path: p,
             out_dir: self.out_dir.clone(),
             info: None,
+            name_ovr: self.proj_name.trim().to_string(),
+            version_ovr: self.proj_version.trim().to_string(),
             results: Vec::new(),
             rx: None,
             ctl: BuildCtl::fresh(),
@@ -1648,6 +1719,17 @@ impl Ui {
                     .on_input(Message::OutDirChanged)
                     .padding(8),
                 pill("Browse").on_press(Message::BrowseOut),
+            ]
+            .spacing(10),
+            row![
+                text("Name:").size(14),
+                text_input("auto", &self.proj_name)
+                    .on_input(Message::NameChanged)
+                    .padding(8),
+                text("Version:").size(14),
+                text_input("auto", &self.proj_version)
+                    .on_input(Message::VersionChanged)
+                    .padding(8),
             ]
             .spacing(10),
         ]

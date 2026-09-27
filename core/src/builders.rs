@@ -1051,6 +1051,46 @@ fn resolve_runner(format: &str, gate_ok: bool) -> crate::container::Runner {
     C::Runner::Host
 }
 
+/// True when `dir` holds an ELF binary (recursive, magic bytes only).
+/// Pure enough to unit-test; used to pick an honest BuildArch.
+fn has_elf(dir: &Path) -> bool {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            if has_elf(&p) {
+                return true;
+            }
+        } else if p.is_file() {
+            if let Ok(f) = std::fs::File::open(&p) {
+                let mut magic = [0u8; 4];
+                use std::io::Read as _;
+                if f.take(4).read_exact(&mut magic).is_ok() && magic == [0x7f, b'E', b'L', b'F'] {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// RPM arch for the payload: `noarch` for data/scripts, native arch when
+/// an ELF binary rides along (Fedora refuses arch-dependent binaries in
+/// noarch packages — rightly so, no override hacks).
+fn rpm_build_arch(payload: &Path) -> &'static str {
+    if !has_elf(payload) {
+        return "noarch";
+    }
+    match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        "aarch64" => "aarch64",
+        "x86" => "i686",
+        _ => "noarch", // unknown: let rpmbuild judge honestly
+    }
+}
+
 /// Builder .rpm real: .spec generado + rpmbuild -bb + verificación.
 /// Todo contenido con --define _topdir dentro del temp (se borra siempre).
 fn build_rpm(
@@ -1071,9 +1111,10 @@ fn build_rpm(
         std::fs::create_dir_all(rpmdir.join(d)).map_err(|e| format!("rpm tree: {e}"))?;
     }
     let spec = format!(
-        "Name:           {pkgname}\nVersion:        {pkgver}\nRelease:        1\nSummary:        BundleForge test build\nLicense:        Apache-2.0\nBuildArch:      noarch\n\n%description\nBundleForge test build.\n\n%install\nmkdir -p \"%{{buildroot}}/usr/share/{pkgname}\"\ncp -a \"{src}/.\" \"%{{buildroot}}/usr/share/{pkgname}/\"\n\n%files\n/usr/share/{pkgname}/\n",
+        "Name:           {pkgname}\nVersion:        {pkgver}\nRelease:        1\nSummary:        BundleForge test build\nLicense:        Apache-2.0\nBuildArch:      {arch}\n\n%description\nBundleForge test build.\n\n%install\nmkdir -p \"%{{buildroot}}/usr/share/{pkgname}\"\ncp -a \"{src}/.\" \"%{{buildroot}}/usr/share/{pkgname}/\"\n\n%files\n/usr/share/{pkgname}/\n",
         pkgname = pkgname,
         pkgver = pkgver,
+        arch = rpm_build_arch(&srcdir),
         src = srcdir.to_string_lossy()
     );
     let spec_path = tmp.join("pkg.spec");
@@ -1855,6 +1896,18 @@ mod tests {
         assert!(y.contains("command: bf-selftest"));
         assert!(y.contains("plugin: dump"));
         assert!(y.contains("source: ./payload"));
+    }
+
+    #[test]
+    fn has_elf_spots_binaries() {
+        let d = std::env::temp_dir().join("bf-test-has-elf");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("sub")).unwrap();
+        std::fs::write(d.join("readme.txt"), "plain").unwrap();
+        assert!(!has_elf(&d));
+        std::fs::write(d.join("sub").join("app"), [0x7f, b'E', b'L', b'F', 0x02]).unwrap();
+        assert!(has_elf(&d));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

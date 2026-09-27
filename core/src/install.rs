@@ -114,7 +114,9 @@ fn packages_for(manager: &str, tool: &str) -> Option<Vec<String>> {
         ("pacman", "makensis") => vec!["nsis"],
         ("apt", "makensis") => vec!["nsis"],
         ("pacman", "wixl") => vec!["msitools"],
-        ("apt", "wixl") => vec!["msitools"],
+        // NO ("apt", "wixl"): Debian/Ubuntu msitools ships 5 tools but NO
+        // wixl (verified in debian:stable-slim) — apt hosts use the Fedora
+        // container instead of a broken native install.
         ("dnf", "wixl") => vec!["msitools"],
         ("pacman", "flatpak-builder") => vec!["flatpak-builder"],
         ("apt", "flatpak-builder") => vec!["flatpak-builder"],
@@ -841,15 +843,15 @@ mod tests {
             vec!["nsis".to_string()]
         );
         assert!(packages_for("dnf", "makensis").is_none());
-        // msi: msitools on all three (dnf presence verified on Fedora).
+        // msi: msitools on pacman (full, wixl incl.) and dnf (wixl
+        // verified in fedora image); apt EXCLUDED — Debian/Ubuntu
+        // msitools ships 5 tools but NO wixl (verified), apt hosts use
+        // the Fedora container instead.
         assert_eq!(
             packages_for("pacman", "wixl").unwrap(),
             vec!["msitools".to_string()]
         );
-        assert_eq!(
-            packages_for("apt", "wixl").unwrap(),
-            vec!["msitools".to_string()]
-        );
+        assert!(packages_for("apt", "wixl").is_none());
         assert_eq!(
             packages_for("dnf", "wixl").unwrap(),
             vec!["msitools".to_string()]
